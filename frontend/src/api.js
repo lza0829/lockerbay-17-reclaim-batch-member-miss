@@ -22,5 +22,8 @@ export const api = {
   setOverdue: (overdue_hours) =>
     req('/api/settings/overdue-hours', { method: 'PUT', body: JSON.stringify({ overdue_hours }) }),
   ingest: () => req('/api/ingest/run', { method: 'POST', body: '{}' }),
-  reclaimMembers: () => req('/api/reclaim/run-members'),
+  reclaimRuns: () => req('/api/reclaim/runs'),
+  reclaimMembers: (runId) =>
+    req(runId ? `/api/reclaim/run-members?run_id=${encodeURIComponent(runId)}` : '/api/reclaim/run-members'),
+  reclaimAttest: (runId) => req(`/api/reclaim/attest?run_id=${encodeURIComponent(runId)}`),
 }

@@ -71,6 +71,28 @@ CREATE TABLE IF NOT EXISTS occupancy_proofs (
   event_ids_json TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+
+-- 回收趟次（批次回执）：一趟一 run_id，成员集合随关账同事务固化，落库即不可变
+CREATE TABLE IF NOT EXISTS reclaim_runs (
+  run_id TEXT PRIMARY KEY,
+  scanned_at TEXT NOT NULL,
+  closed_n INTEGER NOT NULL,
+  backfilled_deadlines INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+-- 回收趟次成员投影：每条本趟关闭的占用一行；
+-- occupancy_id 全表唯一——一个占用至多属于一个回收趟次，重复固化即撞键回滚
+CREATE TABLE IF NOT EXISTS reclaim_run_members (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL REFERENCES reclaim_runs(run_id),
+  occupancy_id TEXT NOT NULL REFERENCES occupancies(id),
+  cell_id TEXT NOT NULL,
+  tracking_no TEXT NOT NULL,
+  reclaim_deadline_at TEXT,
+  closed_at TEXT NOT NULL,
+  UNIQUE(occupancy_id)
+);
 """
 
 

@@ -82,7 +82,11 @@ def occupancy_proofs():
 
 @router.post("/reclaim/run")
 def run_reclaim(body: dict | None = Body(default=None)):
-    """超时回收扫描：补写、裁决、关账、格口回 free 同一事务一次提交。"""
+    """超时回收扫描：补写、裁决、关账、格口回 free、趟次成员投影同事务一次提交。
+
+    任一步失败（含成员投影写不满/全等核证不过）→ 整趟 rollback，
+    不留孤儿/半截成员，也不泄露半关账状态。
+    """
     now = (body or {}).get("now")
     if now is not None:
         try:
@@ -93,7 +97,10 @@ def run_reclaim(body: dict | None = Body(default=None)):
     try:
         result = reclaim_svc.run_scan(conn, overdue_hours=overdue_hours(conn), now=now)
         conn.commit()
-        return reclaim_svc.attach_run_members(result)
+        return result
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -104,6 +111,16 @@ def list_reclaims():
     conn = connect()
     try:
         return reclaim_svc.list_reclaims(conn)
+    finally:
+        conn.close()
+
+
+@router.get("/reclaim/runs")
+def reclaim_runs():
+    """回收趟次回执只读列表（run_id、扫描时刻、closed_n）。"""
+    conn = connect()
+    try:
+        return reclaim_svc.list_runs(conn)
     finally:
         conn.close()
 
@@ -138,12 +155,29 @@ def put_overdue(body: dict = Body(...)):
     finally:
         conn.close()
 
-# --- plant routes ---
+# --- 趟次成员投影只读接口（基线所无） ---
 @router.get("/reclaim/run-members")
 def reclaim_run_members(run_id: str | None = None):
+    """回收趟次成员投影（只读）：run_id、占用 id 集合、关闭时刻；缺省最新一趟。"""
     conn = connect()
     try:
-        return reclaim_svc.list_run_members(conn, run_id)
+        try:
+            return reclaim_svc.list_run_members(conn, run_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc))
+    finally:
+        conn.close()
+
+
+@router.get("/reclaim/attest")
+def reclaim_attest(run_id: str):
+    """趟次成员核证（只读，基线所无）：投影与实关集合全等核证。"""
+    conn = connect()
+    try:
+        try:
+            return reclaim_svc.attest_run(conn, run_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc))
     finally:
         conn.close()
 
